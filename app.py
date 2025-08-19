@@ -92,4 +92,4 @@ else:
         st.experimental_rerun()
 
 
-Share the URLs for the background, T-Shirt, and Generator images, and I’ll update the app with them.
+
