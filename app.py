@@ -1,433 +1,267 @@
 import streamlit as st
-import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
-from datetime import datetime
-import re
+import pandas as pd
+from api import *
 
-# -------------------
-# Set Background Image
-# -------------------
-page_bg_img = """
-<style>
-[data-testid="stAppViewContainer"] {
-    background-image: url("https://i.imgur.com/wlIFDy0.jpeg");
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    color: white;
-}
-
-[data-testid="stHeader"] {
-    background: rgba(0,0,0,0);
-}
-
-[data-testid="stSidebar"] {
-    background-color: rgba(0,0,0,0.8);
-    color: white;
-    padding: 20px;
-}
-
-button, .stButton>button {
-    background-color: rgba(0, 128, 0, 0.8) !important;
-    color: white !important;
-    border-radius: 8px;
-    padding: 10px 20px;
-    font-size: 16px;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-button:hover, .stButton>button:hover {
-    background-color: rgba(0, 100, 0, 1) !important;
-    transform: scale(1.05);
-}
-
-.auth-container {
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 30px;
-    border-radius: 15px;
-    width: 400px;
-    margin: 50px auto;
-    box-shadow: 0 8px 16px rgba(0,0,0,0.5);
-}
-
-.logout-container {
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 20px;
-    border-radius: 15px;
-    width: 300px;
-    margin: 20px auto;
-    text-align: center;
-}
-
-.stTextInput>div>div>input {
-    background-color: rgba(255, 255, 255, 0.9);
-    color: black;
-}
-
-.tab-container {
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 20px;
-    border-radius: 15px;
-    margin: 20px 0;
-}
-
-.admin-panel {
-    background-color: rgba(139, 0, 0, 0.7);
-    padding: 20px;
-    border-radius: 15px;
-    margin: 20px 0;
-}
-
-.user-panel {
-    background-color: rgba(0, 100, 0, 0.7);
-    padding: 20px;
-    border-radius: 15px;
-    margin: 20px 0;
-}
-
-</style>
-"""
-st.markdown(page_bg_img, unsafe_allow_html=True)
-
-# -------------------
-# Load/Save User Data - FIXED
-# -------------------
-def load_users():
-    try:
-        with open('users.yaml', 'r') as file:
-            data = yaml.load(file, Loader=SafeLoader)
-            if data is None:
-                # Create default users if file is empty
-                return create_default_users()
-            return data
-    except FileNotFoundError:
-        return create_default_users()
-
-def create_default_users():
-    # Create default users with properly hashed passwords
-    default_users = {
-        'usernames': {
-            'admin': {
-                'email': 'admin@petrosini.com',
-                'name': 'System Administrator',
-                'password': stauth.Hasher(['1234']).generate()[0],  # Fixed: generate hash properly
-                'role': 'admin',
-                'created_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'last_login': None
-            },
-            'customer': {
-                'email': 'customer@example.com',
-                'name': 'Valued Customer',
-                'password': stauth.Hasher(['abcd']).generate()[0],  # Fixed: generate hash properly
-                'role': 'customer',
-                'created_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'last_login': None
-            }
-        }
-    }
-    save_users(default_users)
-    return default_users
-
-def save_users(users):
-    with open('users.yaml', 'w') as file:
-        yaml.dump(users, file, default_flow_style=False)
-
-# Load users
-credentials = load_users()
-
-# Create authenticator object - FIXED parameter order
-authenticator = stauth.Authenticate(
-    credentials,  # Fixed: pass the credentials directly
-    'petrosini_auth',
-    'petrosini_auth_key',
-    cookie_expiry_days=7
+# Page configuration
+st.set_page_config(
+    page_title="Pro Shop Management System",
+    page_icon="🛒",
+    layout="wide"
 )
 
-# -------------------
-# Authentication Flow - FIXED
-# -------------------
 # Initialize session state
-if 'authentication_status' not in st.session_state:
-    st.session_state.authentication_status = None
-if 'username' not in st.session_state:
-    st.session_state.username = None
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'current_user' not in st.session_state:
+    st.session_state.current_user = None
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = "products"
 
-# Main app logic
-if not st.session_state.get('authentication_status'):
-    # Show login/register tabs
-    tab1, tab2, tab3 = st.tabs(["🔑 Login", "📝 Register", "🔒 Forgot Password"])
+# Authentication functions
+def login():
+    st.title("🔐 Login")
+    
+    users = get_users()
+    credentials = {'usernames': {}}
+    
+    for username, password, name, role in users:
+        credentials['usernames'][username] = {
+            'name': name,
+            'password': password
+        }
+    
+    try:
+        authenticator = stauth.Authenticate(
+            credentials,
+            'pro_shop_cookie',
+            'pro_shop_key',
+            cookie_expiry_days=1
+        )
+        
+        name, authentication_status, username = authenticator.login('Login', 'main')
+        
+        if authentication_status:
+            st.session_state.authenticated = True
+            st.session_state.current_user = username
+            # Get user role from database
+            for user in users:
+                if user[0] == username:
+                    st.session_state.user_role = user[3]
+                    break
+            st.rerun()
+        elif authentication_status == False:
+            st.error('Username/password is incorrect')
+        elif authentication_status == None:
+            st.warning('Please enter your username and password')
+            
+    except Exception as e:
+        st.error(f"Authentication error: {e}")
+
+def logout():
+    st.session_state.authenticated = False
+    st.session_state.current_user = None
+    st.session_state.user_role = None
+    st.rerun()
+
+# Main application
+def main_app():
+    st.sidebar.title(f"Welcome, {st.session_state.current_user}!")
+    st.sidebar.write(f"Role: {st.session_state.user_role}")
+    
+    if st.sidebar.button("🚪 Logout"):
+        logout()
+    
+    # Navigation based on user role
+    if st.session_state.user_role == 'admin':
+        menu_options = ["Dashboard", "Product Management", "Sales", "User Management", "Reports"]
+    else:
+        menu_options = ["Dashboard", "Product Management", "Sales"]
+    
+    selected_menu = st.sidebar.selectbox("Navigation", menu_options)
+    
+    if selected_menu == "Dashboard":
+        show_dashboard()
+    elif selected_menu == "Product Management":
+        manage_products()
+    elif selected_menu == "Sales":
+        process_sales()
+    elif selected_menu == "User Management" and st.session_state.user_role == 'admin':
+        manage_users()
+    elif selected_menu == "Reports" and st.session_state.user_role == 'admin':
+        show_reports()
+
+def show_dashboard():
+    st.title("📊 Dashboard")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    products = get_products()
+    total_products = len(products)
+    total_stock = products['stock'].sum()
+    total_value = (products['price'] * products['stock']).sum()
+    
+    with col1:
+        st.metric("Total Products", total_products)
+    with col2:
+        st.metric("Total Stock", total_stock)
+    with col3:
+        st.metric("Inventory Value", f"${total_value:,.2f}")
+    
+    st.subheader("Low Stock Alert")
+    low_stock = products[products['stock'] < 10]
+    if not low_stock.empty:
+        st.dataframe(low_stock[['name', 'category', 'stock']])
+    else:
+        st.success("All products have sufficient stock!")
+
+def manage_products():
+    st.title("📦 Product Management")
+    
+    tab1, tab2, tab3 = st.tabs(["View Products", "Add Product", "Edit Product"])
     
     with tab1:
-        st.markdown("<div class='auth-container'>", unsafe_allow_html=True)
-        st.title("🔑 Login to Shop")
-        
-        try:
-            # Fixed: Use the correct authentication flow
-            username, authentication_status, _ = authenticator.login('Login', 'main')
-            
-            if authentication_status:
-                st.session_state.username = username
-                st.session_state.authentication_status = authentication_status
-                st.session_state.user_role = credentials['usernames'][username].get('role', 'customer')
-                
-                # Update last login time
-                credentials['usernames'][username]['last_login'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                save_users(credentials)
-                
-                st.success("Login successful!")
-                st.experimental_rerun()
-            elif authentication_status is False:
-                st.error("Invalid username or password")
-                
-        except Exception as e:
-            st.error(f"Login error: {str(e)}")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+        products = get_products()
+        st.dataframe(products)
     
     with tab2:
-        st.markdown("<div class='auth-container'>", unsafe_allow_html=True)
-        st.title("📝 Create Account")
-        
-        try:
-            # Fixed: Simplified registration process
-            with st.form("register_form"):
-                new_username = st.text_input("Username")
-                new_name = st.text_input("Full Name")
-                new_email = st.text_input("Email")
-                new_password = st.text_input("Password", type="password")
-                confirm_password = st.text_input("Confirm Password", type="password")
-                
-                if st.form_submit_button("Register"):
-                    if new_password != confirm_password:
-                        st.error("Passwords do not match!")
-                    elif new_username in credentials['usernames']:
-                        st.error("Username already exists!")
-                    else:
-                        # Create new user
-                        credentials['usernames'][new_username] = {
-                            'email': new_email,
-                            'name': new_name,
-                            'password': stauth.Hasher([new_password]).generate()[0],
-                            'role': 'customer',
-                            'created_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            'last_login': None
-                        }
-                        save_users(credentials)
-                        st.success('User registered successfully! Please login.')
-                        
-        except Exception as e:
-            st.error(f"Registration error: {str(e)}")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.form("add_product_form"):
+            name = st.text_input("Product Name")
+            category = st.selectbox("Category", ["Electronics", "Clothing", "Books", "Sports", "Other"])
+            price = st.number_input("Price", min_value=0.0, step=0.01)
+            stock = st.number_input("Stock", min_value=0, step=1)
+            description = st.text_area("Description")
+            
+            if st.form_submit_button("Add Product"):
+                if name and category and price >= 0 and stock >= 0:
+                    add_product(name, category, price, stock, description)
+                    st.success("Product added successfully!")
+                    st.rerun()
+                else:
+                    st.error("Please fill all fields correctly!")
     
     with tab3:
-        st.markdown("<div class='auth-container'>", unsafe_allow_html=True)
-        st.title("🔒 Reset Password")
-        
-        try:
-            # Fixed: Simplified password reset
-            reset_username = st.text_input("Enter your username")
-            if st.button("Reset Password"):
-                if reset_username in credentials['usernames']:
-                    # Generate a simple reset code (in real app, send via email)
-                    reset_code = "123456"  # Simplified for demo
-                    st.info(f"Your reset code is: {reset_code}")
-                    st.info("In a real application, this would be sent to your email.")
-                else:
-                    st.error("Username not found")
-                    
-        except Exception as e:
-            st.error(f"Password reset error: {str(e)}")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# User is authenticated - show main application
-else:
-    # Sidebar with user info and navigation
-    with st.sidebar:
-        st.markdown("<div class='logout-container'>", unsafe_allow_html=True)
-        user_data = credentials['usernames'][st.session_state.username]
-        st.write(f"👋 Welcome, **{user_data['name']}**")
-        st.write(f"🎭 Role: **{st.session_state.user_role.upper()}**")
-        
-        if st.button("Logout"):
-            st.session_state.authentication_status = None
-            st.session_state.username = None
-            st.session_state.user_role = None
-            st.session_state.current_page = "products"
-            st.experimental_rerun()
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Navigation based on user role
-        if st.session_state.user_role == 'admin':
-            st.subheader("🔧 Admin Panel")
-            if st.button("User Management", key="user_mgmt"):
-                st.session_state.current_page = "user_management"
-            if st.button("View Analytics", key="analytics"):
-                st.session_state.current_page = "analytics"
-        
-        # Common navigation
-        st.subheader("🛍️ Shopping")
-        if st.button("Browse Products", key="products"):
-            st.session_state.current_page = "products"
-        if st.button("Order History", key="orders"):
-            st.session_state.current_page = "orders"
-        if st.button("Account Settings", key="settings"):
-            st.session_state.current_page = "settings"
-
-    # Main content area
-    # Admin-only pages
-    if st.session_state.user_role == 'admin':
-        if st.session_state.current_page == "user_management":
-            st.markdown("<div class='admin-panel'>", unsafe_allow_html=True)
-            st.title("👥 User Management")
+        products = get_products()
+        if not products.empty:
+            product_to_edit = st.selectbox("Select Product to Edit", 
+                                         products['name'].tolist(),
+                                         key='edit_select')
             
-            for username, user_data in credentials['usernames'].items():
-                col1, col2, col3 = st.columns([2, 2, 1])
-                with col1:
-                    st.write(f"**{user_data['name']}** ({username})")
-                with col2:
-                    st.write(f"Role: {user_data.get('role', 'customer')}")
-                with col3:
-                    if st.button("Edit", key=f"edit_{username}"):
-                        st.session_state.editing_user = username
+            product_data = products[products['name'] == product_to_edit].iloc[0]
             
-            if 'editing_user' in st.session_state:
-                user_to_edit = st.session_state.editing_user
-                st.subheader(f"Editing: {user_to_edit}")
+            with st.form("edit_product_form"):
+                new_name = st.text_input("Product Name", value=product_data['name'])
+                new_category = st.selectbox("Category", 
+                                          ["Electronics", "Clothing", "Books", "Sports", "Other"],
+                                          index=["Electronics", "Clothing", "Books", "Sports", "Other"].index(product_data['category']))
+                new_price = st.number_input("Price", value=float(product_data['price']), min_value=0.0, step=0.01)
+                new_stock = st.number_input("Stock", value=int(product_data['stock']), min_value=0, step=1)
+                new_description = st.text_area("Description", value=product_data['description'] if pd.notna(product_data['description']) else "")
                 
-                new_role = st.selectbox(
-                    "Role",
-                    ["admin", "customer"],
-                    index=0 if credentials['usernames'][user_to_edit].get('role') == 'admin' else 1,
-                    key=f"role_{user_to_edit}"
-                )
-                
-                if st.button("Save Changes", key=f"save_{user_to_edit}"):
-                    credentials['usernames'][user_to_edit]['role'] = new_role
-                    save_users(credentials)
-                    del st.session_state.editing_user
-                    st.success("User updated successfully!")
-                    st.experimental_rerun()
-            
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        elif st.session_state.current_page == "analytics":
-            st.markdown("<div class='admin-panel'>", unsafe_allow_html=True)
-            st.title("📊 Analytics Dashboard")
-            
-            total_users = len(credentials['usernames'])
-            admin_count = sum(1 for user in credentials['usernames'].values() if user.get('role') == 'admin')
-            customer_count = total_users - admin_count
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Users", total_users)
-            with col2:
-                st.metric("Admins", admin_count)
-            with col3:
-                st.metric("Customers", customer_count)
-            
-            # Show recent activity
-            st.subheader("Recent Users")
-            for username, user_data in list(credentials['usernames'].items())[-5:]:
-                st.write(f"**{user_data['name']}** - Created: {user_data.get('created_at', 'Unknown')}")
-            
-            st.markdown("</div>", unsafe_allow_html=True)
-    
-    # User settings page (available to all)
-    if st.session_state.current_page == "settings":
-        st.markdown("<div class='user-panel'>", unsafe_allow_html=True)
-        st.title("⚙️ Account Settings")
-        
-        user_data = credentials['usernames'][st.session_state.username]
-        new_name = st.text_input("Full Name", value=user_data['name'], key="name_input")
-        new_email = st.text_input("Email", value=user_data['email'], key="email_input")
-        
-        # Simple password reset form
-        st.subheader("Change Password")
-        current_pw = st.text_input("Current Password", type="password", key="current_pw")
-        new_pw = st.text_input("New Password", type="password", key="new_pw")
-        confirm_pw = st.text_input("Confirm New Password", type="password", key="confirm_pw")
-        
-        if st.button("Update Profile", key="update_profile"):
-            if new_pw and new_pw != confirm_pw:
-                st.error("New passwords don't match!")
-            else:
-                credentials['usernames'][st.session_state.username]['name'] = new_name
-                credentials['usernames'][st.session_state.username]['email'] = new_email
-                if new_pw:  # Only update password if provided
-                    credentials['usernames'][st.session_state.username]['password'] = stauth.Hasher([new_pw]).generate()[0]
-                save_users(credentials)
-                st.success("Profile updated successfully!")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    elif st.session_state.current_page == "orders":
-        st.markdown("<div class='user-panel'>", unsafe_allow_html=True)
-        st.title("📋 Order History")
-        st.info("Your order history will appear here once you make purchases.")
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Main shopping page (default)
-    else:
-        st.title("🛒 Welcome to Petrosini Global Investment")
-        
-        # Role-based welcome message
-        if st.session_state.user_role == 'admin':
-            st.success("👑 Administrator Mode: You have access to all features")
+                if st.form_submit_button("Update Product"):
+                    update_product(product_data['id'], new_name, new_category, new_price, new_stock, new_description)
+                    st.success("Product updated successfully!")
+                    st.rerun()
         else:
-            st.info("🛍️ Customer Mode: Browse and shop our products")
-        
-        # -------------------
-        # Category Selection
-        # -------------------
-        category = st.radio("Select a category", ["Clothes", "Generators", "Electronics"])
+            st.info("No products available to edit.")
 
-        if category == "Clothes":
-            st.subheader("👕 Clothes")
-            st.image("https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400", width=200)
-            if st.button("Buy T-Shirt (₦10,000)", key="tshirt_btn"):
-                st.markdown(
-                    """
-                    <a href="https://paystack.shop/pay/af5ijd14sl" target="_blank">
-                        <button style="background-color:green;color:white;padding:10px 20px;font-size:16px;border-radius:8px;">Pay with Paystack 💳</button>
-                    </a>
-                    """,
-                    unsafe_allow_html=True
-                )
+def process_sales():
+    st.title("💰 Process Sales")
+    
+    products = get_products()
+    if products.empty:
+        st.warning("No products available for sale.")
+        return
+    
+    selected_product = st.selectbox("Select Product", products['name'].tolist())
+    product_data = products[products['name'] == selected_product].iloc[0]
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write(f"**Price:** ${product_data['price']:.2f}")
+        st.write(f"**Available Stock:** {product_data['stock']}")
+    
+    with col2:
+        quantity = st.number_input("Quantity", min_value=1, max_value=product_data['stock'], value=1)
+        total_price = quantity * product_data['price']
+        st.write(f"**Total:** ${total_price:.2f}")
+    
+    if st.button("Process Sale", type="primary"):
+        if quantity <= product_data['stock']:
+            # Record sale
+            record_sale(product_data['id'], quantity, total_price)
+            # Update stock
+            new_stock = product_data['stock'] - quantity
+            update_product(product_data['id'], product_data['name'], product_data['category'], 
+                          product_data['price'], new_stock, product_data['description'])
+            st.success(f"Sale processed successfully! Total: ${total_price:.2f}")
+            st.rerun()
+        else:
+            st.error("Not enough stock available!")
 
-        elif category == "Generators":
-            st.subheader("⚡ Generators")
-            st.image("https://images.unsplash.com/photo-1580619305218-8427a47d35f0?w=400", width=200)
-            if st.button("Buy Generator (₦150,000)", key="generator_btn"):
-                st.markdown(
-                    """
-                    <a href="https://paystack.shop/pay/83og7ge8mt" target="_blank">
-                        <button style="background-color:blue;color:white;padding:10px 20px;font-size:16px;border-radius:8px;">Pay with Paystack 💳</button>
-                    </a>
-                    """,
-                    unsafe_allow_html=True
-                )
+def manage_users():
+    if st.session_state.user_role != 'admin':
+        st.error("Access denied. Admin privileges required.")
+        return
+    
+    st.title("👥 User Management")
+    
+    users = get_users()
+    st.subheader("Current Users")
+    user_df = pd.DataFrame(users, columns=['Username', 'Password', 'Name', 'Role'])
+    st.dataframe(user_df[['Username', 'Name', 'Role']])
+    
+    st.subheader("Add New User")
+    with st.form("add_user_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            new_username = st.text_input("Username")
+            new_name = st.text_input("Full Name")
+        with col2:
+            new_password = st.text_input("Password", type="password")
+            new_role = st.selectbox("Role", ["admin", "staff"])
         
-        elif category == "Electronics":
-            st.subheader("📱 Electronics")
-            st.image("https://images.unsplash.com/photo-1468495244123-6c6c332eeece?w=400", width=200)
-            st.write("Latest smartphones and gadgets")
-            if st.button("Buy Smartphone (₦80,000)", key="phone_btn"):
-                st.markdown(
-                    """
-                    <a href="https://paystack.shop/pay/electronics123" target="_blank">
-                        <button style="background-color:purple;color:white;padding:10px 20px;font-size:16px;border-radius:8px;">Pay with Paystack 💳</button>
-                    </a>
-                    """,
-                    unsafe_allow_html=True
-                )
+        if st.form_submit_button("Add User"):
+            if new_username and new_password and new_name:
+                if add_user(new_username, new_password, new_name, new_role):
+                    st.success("User added successfully!")
+                    st.rerun()
+                else:
+                    st.error("Username already exists!")
+            else:
+                st.error("Please fill all fields!")
+
+def show_reports():
+    if st.session_state.user_role != 'admin':
+        st.error("Access denied. Admin privileges required.")
+        return
+    
+    st.title("📈 Reports")
+    
+    sales_data = get_sales_report()
+    
+    if not sales_data.empty:
+        st.subheader("Sales History")
+        st.dataframe(sales_data)
+        
+        # Sales summary
+        total_sales = sales_data['total_price'].sum()
+        total_quantity = sales_data['quantity'].sum()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Sales Amount", f"${total_sales:,.2f}")
+        with col2:
+            st.metric("Total Items Sold", total_quantity)
+    else:
+        st.info("No sales data available.")
+
+# Main application flow
+def main():
+    if not st.session_state.authenticated:
+        login()
+    else:
+        main_app()
+
+if __name__ == "__main__":
+    main()
