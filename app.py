@@ -1,69 +1,95 @@
 import streamlit as st
-import sqlite3
 
 # -------------------
-# Database Setup
+# Set Background Image
 # -------------------
-def init_db():
-    conn = sqlite3.connect("shop.db")
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS categories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE
-                )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS products (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    price REAL NOT NULL,
-                    category_id INTEGER,
-                    FOREIGN KEY (category_id) REFERENCES categories(id)
-                )''')
+page_bg_img = """
+<style>
+[data-testid="stAppViewContainer"] {
+    background-image: url("https://i.imgur.com/wlIFDy0.jpeg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: white;
+}
 
-    # Insert default categories if not exist
-    c.execute("INSERT OR IGNORE INTO categories (id, name) VALUES (1, 'Clothes')")
-    c.execute("INSERT OR IGNORE INTO categories (id, name) VALUES (2, 'Generators')")
-    conn.commit()
-    conn.close()
+[data-testid="stHeader"] {
+    background: rgba(0,0,0,0);
+}
 
-# Initialize database
-init_db()
+[data-testid="stSidebar"] {
+    background-color: rgba(0,0,0,0.5);
+    color: white;
+}
+
+button, .stButton>button {
+    background-color: rgba(0, 128, 0, 0.8) !important;
+    color: white !important;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 16px;
+}
+</style>
+"""
+st.markdown(page_bg_img, unsafe_allow_html=True)
 
 # -------------------
-# Streamlit App
+# Simple Login
 # -------------------
-st.set_page_config(page_title="Pro Shop", page_icon="🛒", layout="wide")
-st.title("🛒 Pro Shop")
+users = {"admin": "1234", "customer": "abcd"}
 
-menu = st.sidebar.radio("Navigation", ["Home", "Admin Dashboard"])
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-if menu == "Home":
-    st.subheader("Browse Products")
-    conn = sqlite3.connect("shop.db")
-    c = conn.cursor()
-    for row in c.execute("SELECT * FROM categories"):
-        st.markdown(f"### {row[1]}")
-        products = c.execute("SELECT name, price FROM products WHERE category_id=?", (row[0],)).fetchall()
-        if products:
-            for product in products:
-                st.write(f"- {product[0]} — ${product[1]:.2f}")
+if not st.session_state.logged_in:
+    st.title("🔑 Login to Shop")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if username in users and users[username] == password:
+            st.session_state.logged_in = True
+            st.success("✅ Logged in successfully!")
         else:
-            st.write("No products yet.")
-    conn.close()
+            st.error("❌ Invalid username or password")
 
-elif menu == "Admin Dashboard":
-    st.subheader("Add New Product")
-    conn = sqlite3.connect("shop.db")
-    c = conn.cursor()
-    categories = c.execute("SELECT * FROM categories").fetchall()
-    category_dict = {row[1]: row[0] for row in categories}
+else:
+    st.title("🛒 Welcome to Petrosini Global Investment")
 
-    name = st.text_input("Product Name")
-    price = st.number_input("Price", min_value=0.0, step=0.01)
-    category = st.selectbox("Category", list(category_dict.keys()))
+    # -------------------
+    # Category Selection
+    # -------------------
+    category = st.radio("Select a category", ["Clothes", "Generators"])
 
-    if st.button("Add Product"):
-        c.execute("INSERT INTO products (name, price, category_id) VALUES (?, ?, ?)",
-                  (name, price, category_dict[category]))
-        conn.commit()
-        st.success(f"Added {name} to {category}")
-    conn.close()
+    if category == "Clothes":
+        st.subheader("👕 Clothes")
+        st.image("https://i.imgur.com/oZ6w0.jpg", width=200)
+        if st.button("Buy T-Shirt (₦10,000)"):
+            st.markdown(
+                """
+                <a href="https://paystack.shop/pay/af5ijd14sl" target="_blank">
+                    <button style="background-color:green;color:white;padding:10px 20px;font-size:16px;">Pay with Paystack 💳</button>
+                </a>
+                """,
+                unsafe_allow_html=True
+            )
+
+    elif category == "Generators":
+        st.subheader("⚡ Generators")
+        st.image("https://i.imgur.com/LiJ0v.jpg", width=200)
+        if st.button("Buy Generator (₦150,000)"):
+            st.markdown(
+                """
+                <a href="https://paystack.shop/pay/83og7ge8mt" target="_blank">
+                    <button style="background-color:blue;color:white;padding:10px 20px;font-size:16px;">Pay with Paystack 💳</button>
+                </a>
+                """,
+                unsafe_allow_html=True
+            )
+
+    if st.button("Logout"):
+        st.session_state.logged_in = False
+        st.experimental_rerun()
+
+
+Share the URLs for the background, T-Shirt, and Generator images, and I’ll update the app with them.
