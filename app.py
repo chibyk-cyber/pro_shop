@@ -73,7 +73,7 @@ elif menu == "Shop":
 
         if category == "Clothes":
             st.subheader("👕 T-Shirts")
-            st.image("https://i.imgur.com/oZ6w0.jpg", width=300)
+            st.image("https://thevectorlab.com/cdn/shop/products/flat-lay-tee-front-03_5000x.jpg", width=300)
             st.markdown(
                 """
                 <a href="https://paystack.shop/pay/af5ijd14sl" target="_blank">
@@ -87,7 +87,7 @@ elif menu == "Shop":
 
         elif category == "Generators":
             st.subheader("⚡ Generator")
-            st.image("https://i.imgur.com/LiJ0v.jpg", width=300)
+            st.image("https://kjcrm.s3.eu-central-1.amazonaws.com/uploads/34ad52c728c949729301435c94a9c87b.jpg", width=300)
             st.markdown(
                 """
                 <a href="https://paystack.shop/pay/83og7ge8mt" target="_blank">
