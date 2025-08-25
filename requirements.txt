@@ -1,6 +1,2 @@
- os
-json
- time
- requests
- streamlit 
-typing  
+streamlit
+pandas
